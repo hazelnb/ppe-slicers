@@ -31,6 +31,15 @@ def interior_angle(poly: shapely.Geometry, pt_idx: int):
   
   return angle
 
+def perp_vec(vec: list[float]):
+  return np.array([-vec[1], vec[0]])
+
+def dir_line(base_pt: list[float], dir_vec: list[float], length: float):
+  base_pt, vector = (np.array(base_pt), np.array(dir_vec))
+  unit     = dir_vec/norm(dir_vec)
+
+  end_pt = base_pt + length*unit
+  return shapely.LineString([base_pt, end_pt])
 
 def perp_line(base_pt: list[float], vector: list[float], length: float):
   base_pt, vector = (np.array(base_pt), np.array(vector))
@@ -40,3 +49,5 @@ def perp_line(base_pt: list[float], vector: list[float], length: float):
 
   end_pt = base_pt + length*perp_vec
   return shapely.LineString([base_pt, end_pt])
+
+#TODO: force pt and vec inputs to be tuples and or np arrays
