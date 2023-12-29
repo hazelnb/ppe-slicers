@@ -1,4 +1,3 @@
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 from shapely.geometry import Point, Polygon, MultiPoint, LineString, MultiLineString
@@ -11,7 +10,6 @@ import geopandas as gpd
 import numpy as np
 
 import math
-import collections
 
 from .geom_helpers import *
 
@@ -40,14 +38,12 @@ class BandSlicer: #TODO: figure out inheritance model for parent slicer class
         
         geom = self.normalize_geom(geom)
         geom = geom.simplify(self.tolerance)
-        #geom = geom.buffer(-self.band_width/5)
 
         return geom
 
     def plot(self):
         _, ax = plt.subplots()
         for long in self.longitudes:
-            #long.plot(ax=ax, facecolor="none")
             shapely.plotting.plot_line(long, ax=ax,  linewidth=1, add_points=False)
 
         for band in self.band_cuts:
@@ -56,7 +52,7 @@ class BandSlicer: #TODO: figure out inheritance model for parent slicer class
         ax.axis("equal")
         ax.set_axis_off()
 
-    def cut_band(self, inner_lng_idx: int, n_cuts: int, offset: int):
+    def cut_band(self, inner_lng_idx: int, n_cuts: int, offset=0): ## NOTE: offset not currently being used
         cuts = []
         used_pts = []
 
@@ -65,7 +61,7 @@ class BandSlicer: #TODO: figure out inheritance model for parent slicer class
 
         ideal_separation = self.piece_width
 
-        for i, coord in enumerate(inner_long.coords):
+        for i, coord in enumerate(inner_long.coords): ## start by cutting at vertices
             edges = oriented_edges(inner_long, i)
             int_angle = interior_angle(inner_long, i)
 
@@ -74,29 +70,23 @@ class BandSlicer: #TODO: figure out inheritance model for parent slicer class
                 used_pts += [coord]
 
             elif int_angle < 160:
-                test_line = perp_line(coord, edges[0]/norm(edges[0]) + edges[1]/norm(edges[1]), 10*self.band_width)
+                test_line = perp_line(coord, edges[0]/norm(edges[0]) + edges[1]/norm(edges[1]), 2*self.band_width)
                 new_end_pt = shapely.intersection(test_line, outer_long).representative_point()
                 
                 cuts += [LineString([coord, new_end_pt])]
                 used_pts += [coord]
         
-        remaining_cuts = n_cuts - len(cuts)
+        if len(cuts) != 0:
+            distance_breakpoints = [inner_long.line_locate_point(Point(pt)) for pt in used_pts]
+        else:
+            distance_breakpoints = [0, inner_long.length]
 
-        if remaining_cuts == n_cuts:
-            distances = np.linspace(0, inner_long.length, num=n_cuts, endpoint=False)
-            points = [inner_long.interpolate(distance) for distance in distances]
-            cuts += [shapely.shortest_line(pt, outer_long) for pt in points]
-
-            return cuts
-
-        distance_breakpoints = [inner_long.line_locate_point(Point(pt)) for pt in used_pts]
-
-        for cur, next in zip(distance_breakpoints[:-1], distance_breakpoints[1:-1] + [inner_long.length]):
-            if abs(next - cur) < 1.5*ideal_separation:
+        for cur, next in zip(distance_breakpoints[:-1], distance_breakpoints[1:-1] + [inner_long.length]): ## then cut up the segments between verts
+            if abs(next - cur) < 2*ideal_separation:
               continue
                    
             n = math.ceil(abs((next - cur))/ideal_separation) + 1
-            segment_distances = np.linspace(cur, next, num=n)[1:-1]
+            segment_distances = np.linspace(cur, next, num=n)[1:]
             points = [inner_long.interpolate(distance) for distance in segment_distances]
             cuts += [shapely.shortest_line(pt, outer_long) for pt in points]
         
@@ -110,12 +100,12 @@ class BandSlicer: #TODO: figure out inheritance model for parent slicer class
 
         band_cut_res = [
             (idx+1, math.ceil(self.longitudes[idx+1].length/outside_spacing))
-            for idx in band_idxs]
+            for idx in band_idxs] ## List of tuples of golw (longitude index, # of cuts that fit to give desired piece width)
 
         return [self.cut_band(*band_data, 0) for band_data in band_cut_res]
 
     @staticmethod
-    def normalize_geom(geom: shapely.Polygon):
+    def normalize_geom(geom: shapely.Polygon): ## TODO: This should either move to geom_helper, or the geom_helper methods should move here
         xmin, ymin, xmax, ymax = geom.bounds
         max_dim = max(xmax-xmin, ymax-ymin)
 
