@@ -26,10 +26,6 @@ class BandSlicer: #TODO: figure out inheritance model for parent slicer class
         self.longitudes = self._longitudes()
         self.band_cuts  = self.cut_bands()
 
-    def _longitudes(self):
-        buffer_vals = np.arange(-self.band_width, -self.band_width*self.n_bands, -self.band_width)
-        return [self.geom.boundary] + [self.geom.buffer(val).boundary for val in buffer_vals]
-
     def preprocess(self, geom: shapely.Polygon):
         if isinstance(geom, gpd.GeoDataFrame):
           geom = geom.loc[0, "geometry"]
@@ -41,16 +37,20 @@ class BandSlicer: #TODO: figure out inheritance model for parent slicer class
 
         return geom
 
-    def plot(self):
-        _, ax = plt.subplots()
-        for long in self.longitudes:
-            shapely.plotting.plot_line(long, ax=ax,  linewidth=1, add_points=False)
+    def _longitudes(self):
+        buffer_vals = np.arange(-self.band_width, -self.band_width*self.n_bands, -self.band_width)
+        return [self.geom.boundary] + [self.geom.buffer(val).boundary for val in buffer_vals]
 
-        for band in self.band_cuts:
-            shapely.plotting.plot_line(MultiLineString(band), linewidth=1, ax=ax, add_points = False)
+    def cut_bands(self):
+        outside_spacing = self.piece_width
+        band_idxs = range(0,self.n_bands-1)
 
-        ax.axis("equal")
-        ax.set_axis_off()
+        band_cut_res = [
+            (idx+1, math.ceil(self.longitudes[idx+1].length/outside_spacing))
+            for idx in band_idxs] ## List of tuples of golw (longitude index, # of cuts that fit to give desired piece width)
+
+        return [self.cut_band(*band_data, 0) for band_data in band_cut_res]
+
 
     def cut_band(self, inner_lng_idx: int, n_cuts: int, offset=0): ## NOTE: offset not currently being used
         cuts = []
@@ -93,16 +93,17 @@ class BandSlicer: #TODO: figure out inheritance model for parent slicer class
         print(n_cuts - len(cuts))
 
         return cuts
+    
+    def plot(self):
+        _, ax = plt.subplots()
+        for long in self.longitudes:
+            shapely.plotting.plot_line(long, ax=ax,  linewidth=1, add_points=False)
 
-    def cut_bands(self):
-        outside_spacing = self.piece_width
-        band_idxs = range(0,self.n_bands-1)
+        for band in self.band_cuts:
+            shapely.plotting.plot_line(MultiLineString(band), linewidth=1, ax=ax, add_points = False)
 
-        band_cut_res = [
-            (idx+1, math.ceil(self.longitudes[idx+1].length/outside_spacing))
-            for idx in band_idxs] ## List of tuples of golw (longitude index, # of cuts that fit to give desired piece width)
-
-        return [self.cut_band(*band_data, 0) for band_data in band_cut_res]
+        ax.axis("equal")
+        ax.set_axis_off()
 
     @staticmethod
     def normalize_geom(geom: shapely.Polygon): ## TODO: This should either move to geom_helper, or the geom_helper methods should move here
